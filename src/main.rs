@@ -1,7 +1,9 @@
 use std::fs::File;
 use std::io::BufWriter;
+use std::io::Write;
 use std::io::BufReader;
 use std::cmp;
+use std::str::FromStr;
 
 extern crate modfile;
 use modfile::ptmf;
@@ -15,15 +17,23 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 static USAGE: &'static str = "
 modtool.
 
-Usage: modtool [options] [<file> ...]
+Usage: 
+    modtool (-h | --help)
+    modtool (-V | --version)
+    modtool show [--show-summary] [--show-sample-info] [--show-sample-stats] [--show-pattern-info] <file>...
+	modtool save <number> <filename> <file>
 
 Options:
     -V, --version         Show version info.
     -h, --help            Show this text.
+	
     --show-summary        Show summary info.
     --show-sample-info    Show info about samples.
     --show-sample-stats   Show sample statistics.
-	--show-pattern-info   Show info about patterns.
+    --show-pattern-info   Show info about patterns.
+	
+    <number>              Select sample NUMBER to save.
+    <filename>            Save selected sample to FILENAME.
 ";
 
 #[derive(RustcDecodable, Debug)]
@@ -31,10 +41,16 @@ struct Args {
     arg_file: Vec<String>,
     flag_help: bool,
 	flag_version: bool,
+	
+	cmd_show: bool,
 	flag_show_summary: bool,
     flag_show_sample_info: bool,
 	flag_show_sample_stats: bool,
-	flag_show_pattern_info: bool
+	flag_show_pattern_info: bool,
+	
+	cmd_save: bool,
+	arg_number: String,
+	arg_filename: String
 }
 
 #[derive(Debug)]
@@ -75,14 +91,16 @@ fn show_summary(module: &ptmf::PTModule) {
 }
 
 fn show_sample_info(module: &ptmf::PTModule) {
+	let mut number = 1;
 	for sample in module.sample_info.iter() {
-		println!("Sample details");
+		println!("Sample number {} details", number);
 		println!("\tName: {}", sample.name);
 		println!("\tLength: {}b", sample.length * 2);
 		println!("\tFinetune: {}", sample.finetune);
 		println!("\tVolume: {}", sample.volume);
 		println!("\tRepeat start: {}b", sample.repeat_start * 2);
 		println!("\tRepeat length: {}b", sample.repeat_length * 2);
+		number += 1;
 	}
 	println!("");
 }
@@ -169,23 +187,71 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 	println!("");
 }
 
+
+
 fn main() {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.decode())
                             .unwrap_or_else(|e| e.exit());
-    println!("{:?}", args);	
+//    println!("{:?}", args);	
 	
 	if args.flag_version {
 		println!("Version: {}", VERSION);
 		return;
 	}
+	
+	if args.arg_number.len() > 0 {
+		let number = usize::from_str(&args.arg_number).unwrap();
+		if number < 1 || number > 31 {
+			println!("Invalid sample number '{}'", number);
+			return;
+		}
+	}
 
-	for ref filename in args.arg_file {
+	if args.cmd_show {
+		for ref filename in args.arg_file {
+			let file = match File::open(filename) {
+				Ok(file) => file,
+				Err(e) => {
+					println!("Failed to open file: '{}' Error: '{}'", filename, e);
+					continue
+				}
+			};
+			
+			let mut reader = BufReader::new(&file);
+			let module = match ptmf::read_mod(&mut reader) {
+				Ok(module) => module,
+				Err(e) => {
+					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
+					continue
+				}
+			};
+			
+			println!("Processing: {}", filename);
+				
+			if args.flag_show_summary {
+				show_summary(&module);
+			}
+			
+			if args.flag_show_sample_info {
+				show_sample_info(&module);
+			}
+			
+			if args.flag_show_sample_stats {
+				show_sample_stats(&module);
+			}
+			
+			if args.flag_show_pattern_info {
+				show_pattern_info(&module);
+			}
+		}
+	} else if args.cmd_save {
+		let ref filename = args.arg_file[0];
 		let file = match File::open(filename) {
 			Ok(file) => file,
 			Err(e) => {
 				println!("Failed to open file: '{}' Error: '{}'", filename, e);
-				continue
+				return
 			}
 		};
 		
@@ -194,26 +260,36 @@ fn main() {
 			Ok(module) => module,
 			Err(e) => {
 				println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-				continue
+				return
 			}
 		};
-		
+
 		println!("Processing: {}", filename);
-			
-		if args.flag_show_summary {
-			show_summary(&module);
+
+		let ref filename = args.arg_filename;
+		let file = match File::create(filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
+
+		let number = usize::from_str(&args.arg_number).unwrap() - 1;
+		if number >= module.sample_data.len() {
+			println!("Invalid sample number. Only {} samples available.", module.sample_data.len());
+			return
 		}
 		
-		if args.flag_show_sample_info {
-			show_sample_info(&module);
-		}
-		
-		if args.flag_show_sample_stats {
-			show_sample_stats(&module);
-		}
-		
-		if args.flag_show_pattern_info {
-			show_pattern_info(&module);
+		let mut writer = BufWriter::new(&file);		
+		match writer.write_all(&module.sample_data[number]) {
+			Ok(_) => (),
+			Err(e) => {
+				println!("Failed to write sample. Error: '{:?}'", e);
+				return
+			}
 		}
 	}
+	
+	println!("Done!");
 }
