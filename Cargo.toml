@@ -1,0 +1,12 @@
+[package]
+name = "modtool"
+version = "0.1.0"
+authors = ["Mathias Olsson <hypp74@gmail.com>"]
+
+[dependencies]
+docopt = "*"
+rustc-serialize = "*"
+
+[dependencies.modfile]
+git = "https://github.com/hypp/modfile"
+
