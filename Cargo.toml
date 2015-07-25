@@ -9,4 +9,3 @@ rustc-serialize = "*"
 
 [dependencies.modfile]
 git = "https://github.com/hypp/modfile"
-

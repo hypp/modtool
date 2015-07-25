@@ -21,17 +21,17 @@ Usage:
     modtool (-h | --help)
     modtool (-V | --version)
     modtool show [--show-summary] [--show-sample-info] [--show-sample-stats] [--show-pattern-info] <file>...
-	modtool save <number> <filename> <file>
+    modtool save <number> <filename> <file>
 
 Options:
     -V, --version         Show version info.
     -h, --help            Show this text.
-	
+
     --show-summary        Show summary info.
     --show-sample-info    Show info about samples.
     --show-sample-stats   Show sample statistics.
     --show-pattern-info   Show info about patterns.
-	
+
     <number>              Select sample NUMBER to save.
     <filename>            Save selected sample to FILENAME.
 ";
