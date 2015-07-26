@@ -20,20 +20,21 @@ modtool.
 Usage: 
     modtool (-h | --help)
     modtool (-V | --version)
-    modtool show [--show-summary] [--show-sample-info] [--show-sample-stats] [--show-pattern-info] <file>...
-    modtool save <number> <filename> <file>
+    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] <file>...
+    modtool save (--number=<number> | --all) <fileprefix> <file>
 
 Options:
     -V, --version         Show version info.
     -h, --help            Show this text.
 
-    --show-summary        Show summary info.
-    --show-sample-info    Show info about samples.
-    --show-sample-stats   Show sample statistics.
-    --show-pattern-info   Show info about patterns.
+    --summary             Show summary info.
+    --sample-info         Show info about samples.
+    --sample-stats        Show sample statistics.
+    --pattern-info        Show info about patterns.
 
-    <number>              Select sample NUMBER to save.
-    <filename>            Save selected sample to FILENAME.
+    --all                 Save all samples.
+    --number=<number>     Save only sample <number>.
+    <fileprefix>          Use <fileprefix> as prefix to filenames when saving.
 ";
 
 #[derive(RustcDecodable, Debug)]
@@ -43,14 +44,15 @@ struct Args {
 	flag_version: bool,
 	
 	cmd_show: bool,
-	flag_show_summary: bool,
-    flag_show_sample_info: bool,
-	flag_show_sample_stats: bool,
-	flag_show_pattern_info: bool,
+	flag_summary: bool,
+    flag_sample_info: bool,
+	flag_sample_stats: bool,
+	flag_pattern_info: bool,
 	
 	cmd_save: bool,
-	arg_number: String,
-	arg_filename: String
+	flag_all: bool,
+	flag_number: String,
+	arg_fileprefix: String
 }
 
 #[derive(Debug)]
@@ -187,7 +189,27 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 	println!("");
 }
 
+fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
+	for i in range {
+		let filename = format!("{}_{}.raw",prefix,i+1);
+	
+		let file = match File::create(&filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
 
+		let mut writer = BufWriter::new(&file);		
+		match writer.write_all(&module.sample_data[*i]) {
+			Ok(_) => (),
+			Err(e) => {
+				println!("Failed to write sample {}. Error: '{:?}'", i, e);
+			}
+		}
+	}
+}
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
@@ -200,8 +222,8 @@ fn main() {
 		return;
 	}
 	
-	if args.arg_number.len() > 0 {
-		let number = usize::from_str(&args.arg_number).unwrap();
+	if args.flag_number.len() > 0 {
+		let number = usize::from_str(&args.flag_number).unwrap();
 		if number < 1 || number > 31 {
 			println!("Invalid sample number '{}'", number);
 			return;
@@ -229,19 +251,19 @@ fn main() {
 			
 			println!("Processing: {}", filename);
 				
-			if args.flag_show_summary {
+			if args.flag_summary {
 				show_summary(&module);
 			}
 			
-			if args.flag_show_sample_info {
+			if args.flag_sample_info {
 				show_sample_info(&module);
 			}
 			
-			if args.flag_show_sample_stats {
+			if args.flag_sample_stats {
 				show_sample_stats(&module);
 			}
 			
-			if args.flag_show_pattern_info {
+			if args.flag_pattern_info {
 				show_pattern_info(&module);
 			}
 		}
@@ -265,30 +287,19 @@ fn main() {
 		};
 
 		println!("Processing: {}", filename);
-
-		let ref filename = args.arg_filename;
-		let file = match File::create(filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				return
-			}
-		};
-
-		let number = usize::from_str(&args.arg_number).unwrap() - 1;
-		if number >= module.sample_data.len() {
-			println!("Invalid sample number. Only {} samples available.", module.sample_data.len());
-			return
-		}
 		
-		let mut writer = BufWriter::new(&file);		
-		match writer.write_all(&module.sample_data[number]) {
-			Ok(_) => (),
-			Err(e) => {
-				println!("Failed to write sample. Error: '{:?}'", e);
+		let range = if args.flag_all {
+			0..module.sample_data.len()
+		} else {
+			let number = usize::from_str(&args.flag_number).unwrap() - 1;
+			if number >= module.sample_data.len() {
+				println!("Invalid sample number. Only {} samples available.", module.sample_data.len());
 				return
 			}
-		}
+			number..number+1
+		};
+		
+		save_samples(&module,&(range.collect()),&args.arg_fileprefix);
 	}
 	
 	println!("Done!");
