@@ -22,19 +22,30 @@ Usage:
     modtool (-V | --version)
     modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] <file>...
     modtool save (--number=<number> | --all) <fileprefix> <file>
+    modtool remove [--unused-patterns] [--unused-samples] <fileprefix> <file>...
 
 Options:
     -V, --version         Show version info.
     -h, --help            Show this text.
 
-    --summary             Show summary info.
-    --sample-info         Show info about samples.
-    --sample-stats        Show sample statistics.
-    --pattern-info        Show info about patterns.
+    show                  Show various info and statistics.
+      --summary           Show summary info.
+      --sample-info       Show info about samples.
+      --sample-stats      Show sample statistics.
+      --pattern-info      Show info about patterns.
+      <file>              File(s) to process.
 
-    --all                 Save all samples.
-    --number=<number>     Save only sample <number>.
-    <fileprefix>          Use <fileprefix> as prefix to filenames when saving.
+    save                  Save samples, RAW 8-bit signed.
+      --all               Save all samples.
+      --number=<number>   Save only sample <number>.
+      <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
+      <file>              File to process.
+
+    remove                Remove unused/samples and or patterns.
+      --unused-patterns   Remove unused patterns.
+      --unused-samples    Remove unused samples. 
+      <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
+      <file>              File(s) to process.
 ";
 
 #[derive(RustcDecodable, Debug)]
@@ -52,7 +63,11 @@ struct Args {
 	cmd_save: bool,
 	flag_all: bool,
 	flag_number: String,
-	arg_fileprefix: String
+	arg_fileprefix: String,
+	
+	cmd_remove: bool,
+	flag_unused_patterns: bool,
+	flag_unused_samples: bool,
 }
 
 #[derive(Debug)]
@@ -145,6 +160,19 @@ fn show_sample_stats(module: &ptmf::PTModule) {
 	println!("");
 }
 
+fn find_unused_patterns(module: &ptmf::PTModule) -> Vec<u8> {
+	let mut unused:Vec<u8> = Vec::new();
+	let positions = &module.positions.data[0..module.length as usize];
+	let num_patterns = module.patterns.len();
+	for i in 0..num_patterns as u8 {
+		if !positions.contains(&i) {
+			unused.push(i);
+		}
+	}
+
+	unused
+}
+
 fn show_pattern_info(module: &ptmf::PTModule) {
 
 	println!("Pattern info");
@@ -156,11 +184,9 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 	println!("");
 	
 	print!("\tUnused patterns: ");
-	let num_patterns = module.patterns.len();
-	for i in 0..num_patterns as u8 {
-		if !positions.contains(&i) {
-			print!("{} ",i);
-		}
+	let unused = find_unused_patterns(module);
+	for i in unused {
+		print!("{} ",i);
 	}
 	println!("");
 	
@@ -210,6 +236,25 @@ fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
 		}
 	}
 }
+
+fn remove_unused_patterns(module: &mut ptmf::PTModule) {
+	let mut unused = find_unused_patterns(module);
+	unused.reverse();
+	
+	// Remove highest pattern first
+	for i in unused {
+		// Remove pattern
+		module.patterns.remove(i as usize);
+	
+		// Adjust play positions
+		for j in 0..module.length {
+			let j = j as usize;
+			if module.positions.data[j] > i {
+				module.positions.data[j] -= 1;
+			}
+		}
+	}
+}	
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
@@ -300,6 +345,53 @@ fn main() {
 		};
 		
 		save_samples(&module,&(range.collect()),&args.arg_fileprefix);
+	} else if args.cmd_remove {
+		for ref filename in args.arg_file {
+			let file = match File::open(filename) {
+				Ok(file) => file,
+				Err(e) => {
+					println!("Failed to open file: '{}' Error: '{}'", filename, e);
+					continue
+				}
+			};
+			
+			let mut reader = BufReader::new(&file);
+			let mut module = match ptmf::read_mod(&mut reader) {
+				Ok(module) => module,
+				Err(e) => {
+					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
+					continue
+				}
+			};
+			
+			println!("Processing: {}", filename);
+			
+			if args.flag_unused_patterns {
+				remove_unused_patterns(&mut module);
+			}
+			
+			if args.flag_unused_samples {
+//				remove_unused_samples(&mut module);
+			}
+			
+			let filename = format!("{}_{}",args.arg_fileprefix,filename);
+		
+			let file = match File::create(&filename) {
+				Ok(file) => file,
+				Err(e) => {
+					println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+					return
+				}
+			};
+
+			let mut writer = BufWriter::new(&file);		
+			match ptmf::write_mod(&mut writer,&mut module) {
+				Ok(_) => (),
+				Err(e) => {
+					println!("Failed to write module {}. Error: '{:?}'", filename, e);
+				}
+			}
+		}
 	}
 	
 	println!("Done!");
