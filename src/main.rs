@@ -12,6 +12,9 @@ extern crate rustc_serialize;
 extern crate docopt;
 use docopt::Docopt;
 
+// TODO Refactor this to several files
+// TODO Move some of the functions to the modfile crate
+
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 static USAGE: &'static str = "
@@ -151,12 +154,19 @@ fn show_sample_stats(module: &ptmf::PTModule) {
 	repeat_start.done();
 	repeat_length.done();
 	
+	let unused = find_unused_samples(module);
+	
 	println!("Sample statistics");
 	println!("\tLength min: {} max: {} avg: {}", len.min, len.max, len.avg);
 	println!("\tFinetune min: {} max: {} avg: {}", finetune.min, finetune.max, finetune.avg);
 	println!("\tVolume min: {} max: {} avg: {}", volume.min, volume.max, volume.avg);
 	println!("\tRepeat start min: {} max: {} avg: {}", repeat_start.min, repeat_start.max, repeat_start.avg);
 	println!("\tRepeat length min: {} max: {} avg: {}", repeat_length.min, repeat_length.max, repeat_length.avg);
+	print!("\tUnused samples: ");
+	for i in unused {
+		print!("{} ", i);
+	}
+	println!("");
 	println!("");
 }
 
@@ -241,7 +251,7 @@ fn remove_unused_patterns(module: &mut ptmf::PTModule) {
 	let mut unused = find_unused_patterns(module);
 	unused.reverse();
 	
-	// Remove highest pattern first
+	// MUST Remove highest pattern first
 	for i in unused {
 		// Remove pattern
 		module.patterns.remove(i as usize);
@@ -255,6 +265,70 @@ fn remove_unused_patterns(module: &mut ptmf::PTModule) {
 		}
 	}
 }	
+
+fn find_unused_samples(module: &ptmf::PTModule) -> Vec<u8> {
+	let mut unused:Vec<u8> = Vec::new();
+	let mut used = [0u8;32];
+
+	// Find all used samples
+	for pattern in &module.patterns {
+		for row in &pattern.rows {
+			for channel in &row.channels {
+				let number = channel.sample_number as usize;
+				if number > 0 {
+					used[number] = 1;
+				}				
+			}
+		}
+	}
+
+	// Find all unused samples
+	for i in 1..module.sample_info.len()+1 {
+		if used[i] == 0 {
+			unused.push(i as u8);
+		}
+	}
+	
+	unused
+}
+
+fn remove_unused_samples(module: &mut ptmf::PTModule) {
+	let mut unused = find_unused_samples(module);
+	unused.reverse();
+
+	// MUST remove highest sample first
+	for i in unused {
+		let index = i as usize - 1;
+		
+		// Remove sample info and put it last
+		let mut si = module.sample_info.remove(index);
+		
+		if si.length > 0 {
+			// Remove sample data
+			if index < module.sample_data.len() {
+				module.sample_data.remove(index);	
+			}		
+		}
+		
+		si.length = 0;
+		si.repeat_start = 0;
+		si.repeat_length = 0;
+		module.sample_info.push(si);
+	
+		// Rewrite instrument references
+		// TODO optimize this
+		for pattern in &mut module.patterns {
+			for row in &mut pattern.rows {
+				for channel in &mut row.channels {
+					let number = channel.sample_number;
+					if number > i {
+						channel.sample_number -= 1;
+					}				
+				}
+			}
+		}
+	}
+}
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
@@ -371,7 +445,7 @@ fn main() {
 			}
 			
 			if args.flag_unused_samples {
-//				remove_unused_samples(&mut module);
+				remove_unused_samples(&mut module);
 			}
 			
 			let filename = format!("{}_{}",args.arg_fileprefix,filename);
