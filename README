@@ -2,9 +2,9 @@ About
 This is a program written in Rust for manipulating Amiga ProTracker MOD-files.
 I wrote this as an experiment trying to learn Rust.
 
-The program can show various statistics about the file and extract the samples.
-Future improvements will be the ability to replace samples and remove unused
-patterns and unused samples.
+The program can show various statistics about the file, extract the samples,
+remove unused samples and remove unused patterns.
+Future improvements will be the ability to replace samples.
 
 Please feel free to report bugs and contribute in anyway you like.
 
