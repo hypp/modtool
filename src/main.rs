@@ -24,7 +24,7 @@ modtool.
 Usage: 
     modtool (-h | --help)
     modtool (-V | --version)
-    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] <file>...
+    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] <file>...
     modtool save (--number=<number> | --all) <fileprefix> <file>
     modtool remove [--unused-patterns] [--unused-samples] <fileprefix> <file>...
 
@@ -37,6 +37,7 @@ Options:
       --sample-info       Show info about samples.
       --sample-stats      Show sample statistics.
       --pattern-info      Show info about patterns.
+      --use-spn           Use scientific pitch notation where middle C is C4.
       <file>              File(s) to process.
 
     save                  Save samples, RAW 8-bit signed.
@@ -63,6 +64,7 @@ struct Args {
     flag_sample_info: bool,
 	flag_sample_stats: bool,
 	flag_pattern_info: bool,
+	flag_use_spn: bool,
 	
 	cmd_save: bool,
 	flag_all: bool,
@@ -100,6 +102,27 @@ impl Stats {
 		self.avg = self.sum / (self.num_values as usize);
 	}
 }
+
+///
+/// Periods from http://greg-kennedy.com/tracker/modformat.html
+///
+///          C    C#   D    D#   E    F    F#   G    G#   A    A#   B
+/// Octave 1: 856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453
+/// Octave 2: 428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226
+/// Octave 3: 214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113
+///
+/// Octave 0:1712,1616,1525,1440,1357,1281,1209,1141,1077,1017, 961, 907
+/// Octave 4: 107, 101,  95,  90,  85,  80,  76,  71,  67,  64,  60,  57
+///
+static PERIODS: &'static [u16] = &[
+    1712,1616,1525,1440,1357,1281,1209,1141,1077,1017, 961, 907,
+    856,  808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453,
+    428,  404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226,
+    214,  202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113,
+	107,  101,  95,  90,  85,  80,  76,  71,  67,  64,  60,  57,
+];
+
+static NOTE_NAMES: &'static [&'static str] = &["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 fn show_summary(module: &ptmf::PTModule) {
 	println!("Song summary");
@@ -184,7 +207,7 @@ fn find_unused_patterns(module: &ptmf::PTModule) -> Vec<u8> {
 	unused
 }
 
-fn show_pattern_info(module: &ptmf::PTModule) {
+fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 
 	println!("Pattern info");
 	print!("\tPattern play order: ");
@@ -204,7 +227,7 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 	print!("\tEmpty patterns: ");
 	for i in 0..module.patterns.len() {
 		let mut empty = true;
-		for row in &module.patterns[i].rows {
+	for row in &module.patterns[i].rows {
 			for channel in &row.channels {
 				if channel.period != 0 ||
 					channel.sample_number != 0 ||
@@ -241,7 +264,36 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 		}
 	}
 	for key in map.keys() {
-		print!("{} ",key);
+		// Find the position in PERIODS with the
+		// smallest difference
+		let mut found:i32 = -1;
+		let mut min_diff = 65536;
+		let key = *key as i32;
+		for i in 0..PERIODS.len() {
+			let diff = (key as i32 - PERIODS[i] as i32).abs();
+			if diff < min_diff {
+				min_diff = diff;
+				found = i as i32;
+			}
+		}
+		
+		let note = if found == -1 {
+			println!("Failed to find note name");
+			String::new()
+		} else {
+			let mut octave = found / 12;
+			if use_spn {
+				octave += 2;
+			}
+			let note = (found % 12) as usize;
+			let prefix = match min_diff {
+				0 => "",
+				_ => "~"
+			};
+			format!("{}{}-{}",prefix,NOTE_NAMES[note],octave)
+		};
+		
+		print!("{}({}) ",key,note);
 	}
 	println!("");	
 }
@@ -411,7 +463,7 @@ fn main() {
 			}
 			
 			if args.flag_pattern_info {
-				show_pattern_info(&module);
+				show_pattern_info(&module, args.flag_use_spn);
 			}
 		}
 	} else if args.cmd_save {
