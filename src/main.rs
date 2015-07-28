@@ -271,12 +271,19 @@ fn find_unused_samples(module: &ptmf::PTModule) -> Vec<u8> {
 	let mut used = [0u8;32];
 
 	// Find all used samples
-	for pattern in &module.patterns {
-		for row in &pattern.rows {
-			for channel in &row.channels {
+	for pattern_no in 0..module.patterns.len() {
+		let ref pattern = module.patterns[pattern_no];
+		for row_no in 0..pattern.rows.len() {
+			let ref row = pattern.rows[row_no];
+			for channel_no in 0..row.channels.len() {
+				let ref channel = row.channels[channel_no];
 				let number = channel.sample_number as usize;
 				if number > 0 {
-					used[number] = 1;
+					if number > 31 {
+						println!("Error: Invalid sample number in Pattern '{}' Row '{}' Channel '{}' Sample number '{}'",pattern_no,row_no,channel_no,number);
+					} else {
+						used[number] = 1;
+					}
 				}				
 			}
 		}
