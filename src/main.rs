@@ -4,6 +4,7 @@ use std::io::Write;
 use std::io::BufReader;
 use std::cmp;
 use std::str::FromStr;
+use std::collections::BTreeMap;
 
 extern crate modfile;
 use modfile::ptmf;
@@ -223,6 +224,26 @@ fn show_pattern_info(module: &ptmf::PTModule) {
 		}
 	}
 	println!("");
+	
+	print!("\tUsed periods: ");
+	let mut map = BTreeMap::<u16,u16>::new();
+	for pattern_no in 0..module.patterns.len() {
+		let ref pattern = module.patterns[pattern_no];
+		for row_no in 0..pattern.rows.len() {
+			let ref row = pattern.rows[row_no];
+			for channel_no in 0..row.channels.len() {
+				let ref channel = row.channels[channel_no];
+				if channel.period > 0 {
+					let count = map.entry(channel.period).or_insert(0);
+					*count += 1;
+				}
+			}
+		}
+	}
+	for key in map.keys() {
+		print!("{} ",key);
+	}
+	println!("");	
 }
 
 fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
