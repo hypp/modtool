@@ -1,6 +1,7 @@
 About
 This is a program written in Rust for manipulating Amiga ProTracker MOD-files.
-I wrote this as an experiment trying to learn Rust.
+It can also read (some?) MOD-files packed with The Player 6.1 , including 
+8-bit and 4-bit delta packed samples.
 
 The program can show various statistics about the file, extract the samples,
 remove unused samples and remove unused patterns.

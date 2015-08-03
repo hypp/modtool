@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::io::BufReader;
+use std::io::Read;
 use std::cmp;
 use std::str::FromStr;
 use std::collections::BTreeMap;
@@ -24,9 +25,9 @@ modtool.
 Usage: 
     modtool (-h | --help)
     modtool (-V | --version)
-    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] <file>...
-    modtool save (--number=<number> | --all) <fileprefix> <file>
-    modtool remove [--unused-patterns] [--unused-samples] <fileprefix> <file>...
+    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] <file>...
+    modtool save (--number=<number> | --all) [--in-p61] <fileprefix> <file>
+    modtool convert [--unused-patterns] [--unused-samples] [--in-p61] <fileprefix> <file>...
 
 Options:
     -V, --version         Show version info.
@@ -38,17 +39,22 @@ Options:
       --sample-stats      Show sample statistics.
       --pattern-info      Show info about patterns.
       --use-spn           Use scientific pitch notation where middle C is C4.
+      --in-p61            Input file format is The Player 6.1A.
       <file>              File(s) to process.
 
     save                  Save samples, RAW 8-bit signed.
       --all               Save all samples.
       --number=<number>   Save only sample <number>.
+      --in-p61            Input file format is The Player 6.1A.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File to process.
 
-    remove                Remove unused/samples and or patterns.
+    convert               Remove unused/samples and or patterns. 
+                          Can also convert from The Player to ProTracker.
+                          Including 8-bit and 4-bit delta packed samples.
       --unused-patterns   Remove unused patterns.
       --unused-samples    Remove unused samples. 
+      --in-p61            Input file format is The Player 6.1A.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File(s) to process.
 ";
@@ -59,6 +65,9 @@ struct Args {
     flag_help: bool,
 	flag_version: bool,
 	
+	// Common for all sub commands
+	flag_in_p61: bool,
+
 	cmd_show: bool,
 	flag_summary: bool,
     flag_sample_info: bool,
@@ -71,7 +80,7 @@ struct Args {
 	flag_number: String,
 	arg_fileprefix: String,
 	
-	cmd_remove: bool,
+	cmd_convert: bool,
 	flag_unused_patterns: bool,
 	flag_unused_samples: bool,
 }
@@ -102,27 +111,6 @@ impl Stats {
 		self.avg = self.sum / (self.num_values as usize);
 	}
 }
-
-///
-/// Periods from http://greg-kennedy.com/tracker/modformat.html
-///
-///          C    C#   D    D#   E    F    F#   G    G#   A    A#   B
-/// Octave 1: 856, 808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453
-/// Octave 2: 428, 404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226
-/// Octave 3: 214, 202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113
-///
-/// Octave 0:1712,1616,1525,1440,1357,1281,1209,1141,1077,1017, 961, 907
-/// Octave 4: 107, 101,  95,  90,  85,  80,  76,  71,  67,  64,  60,  57
-///
-static PERIODS: &'static [u16] = &[
-    1712,1616,1525,1440,1357,1281,1209,1141,1077,1017, 961, 907,
-    856,  808, 762, 720, 678, 640, 604, 570, 538, 508, 480, 453,
-    428,  404, 381, 360, 339, 320, 302, 285, 269, 254, 240, 226,
-    214,  202, 190, 180, 170, 160, 151, 143, 135, 127, 120, 113,
-	107,  101,  95,  90,  85,  80,  76,  71,  67,  64,  60,  57,
-];
-
-static NOTE_NAMES: &'static [&'static str] = &["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 fn show_summary(module: &ptmf::PTModule) {
 	println!("Song summary");
@@ -227,7 +215,7 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 	print!("\tEmpty patterns: ");
 	for i in 0..module.patterns.len() {
 		let mut empty = true;
-	for row in &module.patterns[i].rows {
+		for row in &module.patterns[i].rows {
 			for channel in &row.channels {
 				if channel.period != 0 ||
 					channel.sample_number != 0 ||
@@ -269,8 +257,8 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 		let mut found:i32 = -1;
 		let mut min_diff = 65536;
 		let key = *key as i32;
-		for i in 0..PERIODS.len() {
-			let diff = (key as i32 - PERIODS[i] as i32).abs();
+		for i in 0..ptmf::PERIODS.len() {
+			let diff = (key as i32 - ptmf::PERIODS[i] as i32).abs();
 			if diff < min_diff {
 				min_diff = diff;
 				found = i as i32;
@@ -290,7 +278,7 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 				0 => "",
 				_ => "~"
 			};
-			format!("{}{}-{}",prefix,NOTE_NAMES[note],octave)
+			format!("{}{}-{}",prefix,ptmf::NOTE_NAMES[note],octave)
 		};
 		
 		print!("{}({}) ",key,note);
@@ -299,7 +287,7 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 }
 
 fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
-	for i in range {
+	for i in range {	
 		let filename = format!("{}_{}.raw",prefix,i+1);
 	
 		let file = match File::create(&filename) {
@@ -311,7 +299,7 @@ fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
 		};
 
 		let mut writer = BufWriter::new(&file);		
-		match writer.write_all(&module.sample_data[*i]) {
+		match writer.write_all(&module.sample_info[*i].data) {
 			Ok(_) => (),
 			Err(e) => {
 				println!("Failed to write sample {}. Error: '{:?}'", i, e);
@@ -382,17 +370,11 @@ fn remove_unused_samples(module: &mut ptmf::PTModule) {
 		
 		// Remove sample info and put it last
 		let mut si = module.sample_info.remove(index);
-		
-		if si.length > 0 {
-			// Remove sample data
-			if index < module.sample_data.len() {
-				module.sample_data.remove(index);	
-			}		
-		}
-		
+				
 		si.length = 0;
 		si.repeat_start = 0;
 		si.repeat_length = 0;
+		si.data.clear();
 		module.sample_info.push(si);
 	
 		// Rewrite instrument references
@@ -429,6 +411,14 @@ fn main() {
 		}
 	}
 
+	let p61 = args.flag_in_p61;
+	let read_fn:fn (&mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> = 
+		if p61 {
+			ptmf::read_p61
+		} else {
+			ptmf::read_mod
+		};
+		
 	if args.cmd_show {
 		for ref filename in args.arg_file {
 			let file = match File::open(filename) {
@@ -440,7 +430,7 @@ fn main() {
 			};
 			
 			let mut reader = BufReader::new(&file);
-			let module = match ptmf::read_mod(&mut reader) {
+			let module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
 					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
@@ -477,7 +467,7 @@ fn main() {
 		};
 		
 		let mut reader = BufReader::new(&file);
-		let module = match ptmf::read_mod(&mut reader) {
+		let module = match read_fn(&mut reader) {
 			Ok(module) => module,
 			Err(e) => {
 				println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
@@ -488,18 +478,18 @@ fn main() {
 		println!("Processing: {}", filename);
 		
 		let range = if args.flag_all {
-			0..module.sample_data.len()
+			0..module.sample_info.len()
 		} else {
 			let number = usize::from_str(&args.flag_number).unwrap() - 1;
-			if number >= module.sample_data.len() {
-				println!("Invalid sample number. Only {} samples available.", module.sample_data.len());
+			if number >= module.sample_info.len() {
+				println!("Invalid sample number. Only {} samples available.", module.sample_info.len());
 				return
 			}
 			number..number+1
 		};
 		
 		save_samples(&module,&(range.collect()),&args.arg_fileprefix);
-	} else if args.cmd_remove {
+	} else if args.cmd_convert {
 		for ref filename in args.arg_file {
 			let file = match File::open(filename) {
 				Ok(file) => file,
@@ -510,7 +500,7 @@ fn main() {
 			};
 			
 			let mut reader = BufReader::new(&file);
-			let mut module = match ptmf::read_mod(&mut reader) {
+			let mut module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
 					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
