@@ -236,7 +236,7 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 	}
 	println!("");
 	
-	print!("\tUsed periods: ");
+	println!("\tUsed periods: ");
 	let mut map = BTreeMap::<u16,u16>::new();
 	for pattern_no in 0..module.patterns.len() {
 		let ref pattern = module.patterns[pattern_no];
@@ -281,9 +281,60 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 			format!("{}{}-{}",prefix,ptmf::NOTE_NAMES[note],octave)
 		};
 		
-		print!("{}({}) ",key,note);
+		println!("\t {}({}) ",key,note);
 	}
-	println!("");	
+//	println!("");
+	
+	println!("\tUsed effects: ");
+	let mut effects = [false; 32]; // 32 effects
+	for pattern_no in 0..module.patterns.len() {
+		let ref pattern = module.patterns[pattern_no];
+		for row_no in 0..pattern.rows.len() {
+			let ref row = pattern.rows[row_no];
+			for channel_no in 0..row.channels.len() {
+				let ref channel = row.channels[channel_no];
+				let mut effect = (channel.effect & 0x0f00) >> 8;
+				if effect == 0 {
+					if channel.effect & 0x00ff == 0 {
+						// Not really an effect
+						continue;
+					}
+				}
+				if effect == 0xe {
+					effect = ((channel.effect & 0x00f0) >> 4) + 16;
+				}
+				effects[effect as usize] = true;
+			}
+		}
+	}
+	
+	let mut usecode:u32 = 0;
+	for i in 0..effects.len() {
+		if effects[i] {
+			let name = ptmf::EFFECT_NAMES[i];
+			println!("\t {}",name);
+			
+			// Figure out the player usecode
+			// Some have special handling
+			if i == 0 {
+				// 
+				usecode |= 1 << 8; // The player converts 0 to 8
+			} else {
+				usecode |= 1 << i;
+			} 
+		}
+	}
+	
+	// Check if finetune is used
+	for si in module.sample_info.iter() {
+		if si.finetune != 0 {
+			usecode |= 1;
+			break;
+		}
+	}
+	
+	println!("\tThe Player usecode: ${:X}",usecode);
+	println!("");
 }
 
 fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String) {
