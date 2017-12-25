@@ -28,9 +28,9 @@ modtool.
 Usage: 
     modtool (-h | --help)
     modtool (-V | --version)
-    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] <file>...
-    modtool save (--number=<number> | --all) [--in-p61] <fileprefix> <file>
-    modtool convert [--unused-patterns] [--unused-samples] [--in-p61] <fileprefix> <file>...
+    modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] [--skip-filesize-check] <file>...
+    modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] <fileprefix> <file>
+    modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
 
 Options:
     -V, --version         Show version info.
@@ -43,12 +43,14 @@ Options:
       --pattern-info      Show info about patterns.
       --use-spn           Use scientific pitch notation where middle C is C4.
       --in-p61            Input file format is The Player 6.1A.
+      --skip-filesize-check  Skip check if all data has been parsed.
       <file>              File(s) to process.
 
     save                  Save samples, RAW 8-bit signed.
       --all               Save all samples.
       --number=<number>   Save only sample <number>.
       --in-p61            Input file format is The Player 6.1A.
+      --skip-filesize-check  Skip check if all data has been parsed.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File to process.
 
@@ -58,6 +60,7 @@ Options:
       --unused-patterns   Remove unused patterns.
       --unused-samples    Remove unused samples. 
       --in-p61            Input file format is The Player 6.1A.
+      --skip-filesize-check  Skip check if all data has been parsed.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File(s) to process.
 ";
@@ -70,6 +73,7 @@ struct Args {
 	
 	// Common for all sub commands
 	flag_in_p61: bool,
+	flag_skip_filesize_check: bool,
 
 	cmd_show: bool,
 	flag_summary: bool,
@@ -465,12 +469,26 @@ fn main() {
 		}
 	}
 
+	fn mod_fn_true(reader: &mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
+		return ptmf::read_mod(reader, true);
+	}
+
+	fn mod_fn_false(reader: &mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
+		return ptmf::read_mod(reader, false);
+	}
+
+	let skip_file_size_check = args.flag_skip_filesize_check;
+
 	let p61 = args.flag_in_p61;
 	let read_fn:fn (&mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> = 
 		if p61 {
 			ptmf::read_p61
 		} else {
-			ptmf::read_mod
+			if skip_file_size_check {
+				mod_fn_true
+			} else {
+				mod_fn_false
+			}
 		};
 		
 	if args.cmd_show {
