@@ -4,8 +4,10 @@ version = "1.1.0"
 authors = ["Mathias Olsson <hypp74@gmail.com>"]
 
 [dependencies]
-docopt = "*"
+docopt = "0.8"
 rustc-serialize = "*"
+serde = "1.0"
+serde_derive = "1.0"
 
 [dependencies.modfile]
 git = "https://github.com/hypp/modfile"

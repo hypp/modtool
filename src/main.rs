@@ -10,8 +10,11 @@ use std::collections::BTreeMap;
 extern crate modfile;
 use modfile::ptmf;
 
-extern crate rustc_serialize;
+#[macro_use]
+extern crate serde_derive;
 extern crate docopt;
+extern crate rustc_serialize;
+
 use docopt::Docopt;
 
 // TODO Refactor this to several files
@@ -59,7 +62,7 @@ Options:
       <file>              File(s) to process.
 ";
 
-#[derive(RustcDecodable, Debug)]
+#[derive(Debug, Deserialize)]
 struct Args {
     arg_file: Vec<String>,
     flag_help: bool,
@@ -445,7 +448,7 @@ fn remove_unused_samples(module: &mut ptmf::PTModule) {
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
-                            .and_then(|d| d.decode())
+                            .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
 //    println!("{:?}", args);	
 	
