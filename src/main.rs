@@ -126,6 +126,7 @@ fn show_summary(module: &ptmf::PTModule) {
 	let used_samples = module.sample_info.iter().filter(|si| si.length > 0);
 	println!("\tNumber of samples with length > 0: {}", used_samples.count());
 	println!("\tNumber of patterns: {}", module.patterns.len());
+	println!("\tNumber of channels: {}", module.patterns[0].rows[0].channels.len());
 	println!("");
 }
 
