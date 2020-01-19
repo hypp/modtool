@@ -30,7 +30,8 @@ Usage:
     modtool (-V | --version)
     modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] [--skip-filesize-check] <file>...
     modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] <fileprefix> <file>
-    modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
+	modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
+	modtool merge <target> <file>...
 
 Options:
     -V, --version         Show version info.
@@ -63,6 +64,10 @@ Options:
       --skip-filesize-check  Skip check if all data has been parsed.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File(s) to process.
+	  
+    merge                 Merge patterns from two or more modules.
+      <target>			  Output file.
+      <file>              File(s) to process.						  
 ";
 
 #[derive(Debug, Deserialize)]
@@ -90,6 +95,9 @@ struct Args {
 	cmd_convert: bool,
 	flag_unused_patterns: bool,
 	flag_unused_samples: bool,
+
+	cmd_merge: bool,
+	arg_target: String,
 }
 
 #[derive(Debug)]
@@ -609,6 +617,78 @@ fn main() {
 				}
 			}
 		}
+	}  else if args.cmd_merge {
+		// Open first module
+		let ref first_filename = args.arg_file[0];
+		let file = match File::open(first_filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
+				return
+			}
+		};
+		
+		let mut reader = BufReader::new(&file);
+		let mut first_module = match read_fn(&mut reader) {
+			Ok(module) => module,
+			Err(e) => {
+				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
+				return
+			}
+		};
+
+		// Close file
+		drop(file);
+
+		for i in 1..args.arg_file.len() {
+			let ref filename = args.arg_file[i];
+			let file = match File::open(filename) {
+				Ok(file) => file,
+				Err(e) => {
+					println!("Failed to open file: '{}' Error: '{}'", filename, e);
+					continue
+				}
+			};
+			
+			let mut reader = BufReader::new(&file);
+			let module = match read_fn(&mut reader) {
+				Ok(module) => module,
+				Err(e) => {
+					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
+					continue
+				}
+			};
+			
+			println!("Processing: {}", filename);
+
+			for ref pattern in module.patterns {
+				first_module.patterns.push((*pattern).clone())
+			}
+		}
+
+		println!("Patterns: {:?}", first_module.patterns.len());
+
+		// Since we added patterns we must modify length
+		first_module.length += 1;
+		first_module.positions.data[(first_module.length-1) as usize] = (first_module.patterns.len()-1) as u8;
+
+		let ref filename = args.arg_target;
+		let file = match File::create(&filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
+
+		let mut writer = BufWriter::new(&file);		
+		match ptmf::write_mod(&mut writer,&mut first_module) {
+			Ok(_) => (),
+			Err(e) => {
+				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+			}
+		}
+
 	}
 	
 	println!("Done!");
