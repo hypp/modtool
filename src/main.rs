@@ -661,16 +661,17 @@ fn main() {
 			
 			println!("Processing: {}", filename);
 
+			let new_offset = first_module.patterns.len() as u8;
+
 			for ref pattern in module.patterns {
 				first_module.patterns.push((*pattern).clone())
 			}
+
+			for i in 0..module.length as usize {
+				first_module.positions.data[first_module.length as usize] = module.positions.data[i] + new_offset;
+				first_module.length += 1 as u8;
+			}
 		}
-
-		println!("Patterns: {:?}", first_module.patterns.len());
-
-		// Since we added patterns we must modify length
-		first_module.length += 1;
-		first_module.positions.data[(first_module.length-1) as usize] = (first_module.patterns.len()-1) as u8;
 
 		let ref filename = args.arg_target;
 		let file = match File::create(&filename) {
