@@ -1,6 +1,6 @@
 [package]
 name = "modtool"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Mathias Olsson <hypp74@gmail.com>"]
 
 [dependencies]
