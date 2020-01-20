@@ -30,8 +30,8 @@ Usage:
     modtool (-V | --version)
     modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] [--skip-filesize-check] <file>...
     modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] <fileprefix> <file>
-	modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
-	modtool merge <target> <file>...
+    modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
+    modtool merge [--sync] <target> <file>...
 
 Options:
     -V, --version         Show version info.
@@ -64,10 +64,11 @@ Options:
       --skip-filesize-check  Skip check if all data has been parsed.
       <fileprefix>        Use <fileprefix> as prefix to filenames when saving.
       <file>              File(s) to process.
-	  
+
     merge                 Merge patterns from two or more modules.
-      <target>			  Output file.
-      <file>              File(s) to process.						  
+      --sync              Clear all data except E8x,Fxx,Dxx,Bxx
+      <target>            Output file.
+      <file>              File(s) to process.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +98,7 @@ struct Args {
 	flag_unused_samples: bool,
 
 	cmd_merge: bool,
+	flag_sync: bool,
 	arg_target: String,
 }
 
@@ -651,7 +653,7 @@ fn main() {
 			};
 			
 			let mut reader = BufReader::new(&file);
-			let module = match read_fn(&mut reader) {
+			let mut module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
 					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
@@ -663,8 +665,27 @@ fn main() {
 
 			let new_offset = first_module.patterns.len() as u8;
 
-			for ref pattern in module.patterns {
-				first_module.patterns.push((*pattern).clone())
+			for pattern in &mut module.patterns {
+				if args.flag_sync {
+					for row in &mut pattern.rows {
+						for channel in &mut row.channels {
+							channel.period = 0;
+							channel.sample_number = 0;
+							let mut effect = 0 as u16;
+							if channel.effect & 0x0ff0 == 0x0e80 {
+								effect = channel.effect;
+							} else if channel.effect & 0x0f00 == 0x0f00 {
+								effect = channel.effect;
+							} else if channel.effect & 0x0d00 == 0x0d00 {
+								effect = channel.effect;
+							} else if channel.effect & 0x0b00 == 0x0b00 {
+								effect = channel.effect;
+							}
+							channel.effect = effect;
+						}
+					}
+				}
+				first_module.patterns.push(pattern.clone())
 			}
 
 			for i in 0..module.length as usize {
