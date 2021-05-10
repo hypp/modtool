@@ -15,7 +15,7 @@ Please feel free to report bugs and contribute in anyway you like.
 Released under MIT License, please see the file LICENSE.
 
 # Prerequisites
-Install cargo with git (https://crates.io/)
+Install using rustup https://www.rust-lang.org/tools/install
 
 # Build
 ```

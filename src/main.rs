@@ -480,18 +480,18 @@ fn main() {
 		}
 	}
 
-	fn mod_fn_true(reader: &mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
+	fn mod_fn_true(reader: &mut dyn Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
 		return ptmf::read_mod(reader, true);
 	}
 
-	fn mod_fn_false(reader: &mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
+	fn mod_fn_false(reader: &mut dyn Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
 		return ptmf::read_mod(reader, false);
 	}
 
 	let skip_file_size_check = args.flag_skip_filesize_check;
 
 	let p61 = args.flag_in_p61;
-	let read_fn:fn (&mut Read) -> Result<ptmf::PTModule, ptmf::PTMFError> = 
+	let read_fn:fn (&mut dyn Read) -> Result<ptmf::PTModule, ptmf::PTMFError> = 
 		if p61 {
 			ptmf::read_p61
 		} else {
