@@ -32,6 +32,7 @@ Usage:
     modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] <fileprefix> <file>
     modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
     modtool merge [--sync] <target> <file>...
+    modtool insert <target> <file>
 
 Options:
     -V, --version         Show version info.
@@ -69,6 +70,11 @@ Options:
       --sync              Clear all data except E8x,Fxx,Dxx,Bxx
       <target>            Output file.
       <file>              File(s) to process.
+
+    insert                Insert E81 on first empty effect in every pattern
+                          unless the pattern already has at least on E8x command.
+      <target>            Output file.
+      <file>              File(s) to process.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +106,8 @@ struct Args {
 	cmd_merge: bool,
 	flag_sync: bool,
 	arg_target: String,
+
+	cmd_insert: bool,
 }
 
 #[derive(Debug)]
@@ -711,7 +719,90 @@ fn main() {
 			}
 		}
 
+	}  else if args.cmd_insert {
+		// Open first module
+		let ref first_filename = args.arg_file[0];
+		let file = match File::open(first_filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
+				return
+			}
+		};
+		
+		let mut reader = BufReader::new(&file);
+		let mut module = match read_fn(&mut reader) {
+			Ok(module) => module,
+			Err(e) => {
+				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
+				return
+			}
+		};
+
+		// Close file
+		drop(file);
+
+		for pattern in &mut module.patterns {
+
+			// Check if this pattern has e8 command
+			let mut has_e8 = false;
+			for row in &mut pattern.rows {
+				for channel in &mut row.channels {
+					if channel.effect & 0x0ff0 == 0x0e80 {
+						has_e8 = true;
+						break;
+					}
+				}
+				if has_e8 {
+					break;
+				}
+			}
+
+			// Skip if pattern has e8 command
+			if has_e8 {
+				println!("has e8 command");
+				continue;
+			}
+
+			// insert e8 command
+			let mut added_e8 = false;
+			for row in &mut pattern.rows {
+				for channel in &mut row.channels {
+					if channel.effect == 0x0 {
+						channel.effect = 0x0e81;
+						added_e8 = true;
+						break;
+					}
+				}
+				if added_e8 {
+					break;
+				}
+			}
+			if added_e8 {
+				continue;
+			}
+
+			println!("Failed to add e8 to pattern {:#?}", pattern)
+		}
+
+		let ref filename = args.arg_target;
+		let file = match File::create(&filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
+
+		let mut writer = BufWriter::new(&file);		
+		match ptmf::write_mod(&mut writer,&mut module) {
+			Ok(_) => (),
+			Err(e) => {
+				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+			}
+		}
+
 	}
-	
+ 
 	println!("Done!");
 }
