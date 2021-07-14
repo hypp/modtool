@@ -7,15 +7,12 @@ use std::cmp;
 use std::str::FromStr;
 use std::collections::BTreeMap;
 
-extern crate modfile;
+//extern crate modfile;
 use modfile::ptmf;
 
-#[macro_use]
-extern crate serde_derive;
-extern crate docopt;
-extern crate rustc_serialize;
-
 use docopt::Docopt;
+
+use serde::{Serialize, Deserialize};
 
 // TODO Refactor this to several files
 // TODO Move some of the functions to the modfile crate
@@ -33,6 +30,7 @@ Usage:
     modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
     modtool merge [--sync] <target> <file>...
     modtool insert <target> <file>
+    modtool tojson <target> <file>
 
 Options:
     -V, --version         Show version info.
@@ -72,9 +70,14 @@ Options:
       <file>              File(s) to process.
 
     insert                Insert E81 on first empty effect in every pattern
-                          unless the pattern already has at least on E8x command.
+                          unless the pattern already has at least one E8x command.
       <target>            Output file.
       <file>              File(s) to process.
+
+    tojson                Convert a module to a json representation
+      <target>            Output file.
+      <file>              File to process.
+
 ";
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +111,8 @@ struct Args {
 	arg_target: String,
 
 	cmd_insert: bool,
+
+	cmd_tojson: bool,
 }
 
 #[derive(Debug)]
@@ -801,6 +806,41 @@ fn main() {
 				println!("Failed to write module {}. Error: '{:?}'", filename, e);
 			}
 		}
+
+	} else if args.cmd_tojson {
+		// Open first module
+		let ref first_filename = args.arg_file[0];
+		let file = match File::open(first_filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
+				return
+			}
+		};
+		
+		let mut reader = BufReader::new(&file);
+		let module = match read_fn(&mut reader) {
+			Ok(module) => module,
+			Err(e) => {
+				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
+				return
+			}
+		};
+
+		// Close file
+		drop(file);
+
+		let ref filename = args.arg_target;
+		let file = match File::create(&filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
+
+		let writer = BufWriter::new(&file);
+		serde_json::to_writer_pretty(writer, &module).unwrap();
 
 	}
  
