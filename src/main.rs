@@ -6,13 +6,16 @@ use std::io::Read;
 use std::cmp;
 use std::str::FromStr;
 use std::collections::BTreeMap;
+// Command line
+use docopt::Docopt;
+// JSON
+use serde::{Serialize, Deserialize};
 
-//extern crate modfile;
+// ProTracker and ThePlayer
 use modfile::ptmf;
 
-use docopt::Docopt;
-
-use serde::{Serialize, Deserialize};
+mod pretty;
+use crate::pretty::PrettyFormatter2;
 
 // TODO Refactor this to several files
 // TODO Move some of the functions to the modfile crate
@@ -840,7 +843,9 @@ fn main() {
 		};
 
 		let writer = BufWriter::new(&file);
-		serde_json::to_writer_pretty(writer, &module).unwrap();
+		let format = PrettyFormatter2::default();
+		let mut out = serde_json::Serializer::with_formatter(writer, format);		
+		module.serialize(&mut out).unwrap();
 
 	}
  
