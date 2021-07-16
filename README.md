@@ -26,6 +26,8 @@ cargo build --release
 
 # Usage
 To see usage, run:
+```
  modtool -h
  mod2json -h
  json2mod -h
+```
