@@ -13,9 +13,7 @@ use serde::{Serialize, Deserialize};
 
 // ProTracker and ThePlayer
 use modfile::ptmf;
-
-mod pretty;
-use crate::pretty::PrettyFormatter2;
+use modtool::pretty::PrettyFormatter2;
 
 // TODO Refactor this to several files
 // TODO Move some of the functions to the modfile crate
@@ -34,6 +32,7 @@ Usage:
     modtool merge [--sync] <target> <file>...
     modtool insert <target> <file>
     modtool tojson <target> <file>
+    modtool fromjson <target> <file>
 
 Options:
     -V, --version         Show version info.
@@ -81,6 +80,9 @@ Options:
       <target>            Output file.
       <file>              File to process.
 
+    fromjson              Convert a module to a json representation
+      <target>            Output file.
+      <file>              File to process.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -116,6 +118,8 @@ struct Args {
 	cmd_insert: bool,
 
 	cmd_tojson: bool,
+
+	cmd_fromjson: bool,
 }
 
 #[derive(Debug)]
@@ -847,7 +851,44 @@ fn main() {
 		let mut out = serde_json::Serializer::with_formatter(writer, format);		
 		module.serialize(&mut out).unwrap();
 
+	} else if args.cmd_fromjson {
+		// Open json file
+		let ref first_filename = args.arg_file[0];
+		let file = match File::open(first_filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
+				return
+			}
+		};
+		
+		let reader = BufReader::new(&file);
+		let mut module: ptmf::PTModule = match serde_json::from_reader(reader) {
+			Ok(module) => module,
+			Err(e) => {
+				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
+				return
+			}
+		};
+
+		let ref filename = args.arg_target;
+		let file = match File::create(&filename) {
+			Ok(file) => file,
+			Err(e) => {
+				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
+				return
+			}
+		};
+
+		let mut writer = BufWriter::new(&file);		
+		match ptmf::write_mod(&mut writer,&mut module) {
+			Ok(_) => (),
+			Err(e) => {
+				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+			}
+		}
+
 	}
- 
+
 	println!("Done!");
 }

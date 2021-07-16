@@ -60,9 +60,13 @@ impl<'a> Formatter for PrettyFormatter2<'a> {
 
         w.write_all(b"]")
     }
-    fn begin_array_value<W: ?Sized + Write>(&mut self, w: &mut W, _first: bool) -> io::Result<()> {
+    fn begin_array_value<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> io::Result<()> {
         if self.item_count == 0 {
-            w.write_all(b"\n")?;
+            if first {
+                w.write_all(b"\n")?;
+            } else {
+                w.write_all(b",\n")?;
+            }
             indent(w, self.current_indent, self.indent)?;
         } else {
             w.write_all(b", ")?;
