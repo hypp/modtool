@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::BufReader;
+use anyhow::{Context, Result, anyhow};
 use std::io::Read;
 use std::io::Write;
 use std::io::Cursor;
@@ -41,14 +42,14 @@ struct Args {
 	flag_skip_filesize_check: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
 	
 	if args.flag_version {
 		println!("Version: {}", VERSION);
-		return;
+		return Ok(());
 	}
 	
 	fn mod_fn_true(reader: &mut dyn Read) -> Result<ptmf::PTModule, ptmf::PTMFError> {
@@ -70,20 +71,14 @@ fn main() {
 		
 	// Open the module
 	let ref first_filename = args.arg_source;
-	let file = match File::open(first_filename) {
-		Ok(file) => file,
-		Err(e) => {
-			println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
-			return
-		}
-	};
+	let file = File::open(first_filename)
+		.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
 	
 	let mut reader = BufReader::new(&file);
 	let module = match read_fn(&mut reader) {
 		Ok(module) => module,
 		Err(e) => {
-			println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
-			return
+			return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e))
 		}
 	};
 
@@ -96,8 +91,7 @@ fn main() {
 	match ptmf::write_p61(&mut p61stream, &module) {
 		Ok(_) => (),
 		Err(e) => {
-			println!("Failed to convert module. Error: '{:?}'", e);
-			return
+			return Err(anyhow!("Failed to convert module. Error: '{:?}'",e))
 		}
 	}
 
@@ -105,31 +99,22 @@ fn main() {
 	let p61module = match ptmf::read_p61(&mut p61stream) {
 		Ok(module) => module,
 		Err(e) => {
-			println!("Failed to convert data. Error: '{:?}'", e);
-			return
+			return Err(anyhow!("Failed to convert data. Error: '{:?}'",e))
 		}
 	};
 
 	let usecode = get_usecode(&p61module);
 
 	let ref filename = args.arg_destination;
-	let file = match File::create(&filename) {
-		Ok(file) => file,
-		Err(e) => {
-			println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-			return
-		}
-	};
+	let file = File::create(&filename)
+		.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 	let mut writer = BufWriter::new(&file);
-	match writer.write_all(&p61data) {
-		Ok(_) => (),
-		Err(e) => {
-			println!("Failed to write module {}. Error: '{:?}'", filename, e);
-		}
-	}
+	writer.write_all(&p61data)
+		.with_context(|| format!("Failed to write module {}", filename))?;
 
 	println!("Usecode: ${:08x}",usecode);
+	Ok(())
 }
 
 /// Gets The Player usecode

@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::BufReader;
+use anyhow::{Context, Result, anyhow};
 use std::io::Read;
 // Command line
 use docopt::Docopt;
@@ -36,52 +37,42 @@ struct Args {
 	flag_version: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
-//    println!("{:?}", args);	
 	
 	if args.flag_version {
 		println!("Version: {}", VERSION);
-		return;
+		return Ok(());
 	}
 	
 	let read_fn:fn (&mut dyn Read) -> Result<ptmf::PTModule, ptmf::PTMFError> = ptmf::read_p61;
 		
 	let ref filename = args.arg_source;
-	let file = match File::open(filename) {
-		Ok(file) => file,
-		Err(e) => {
-			println!("Failed to open file: '{}' Error: '{}'", filename, e);
-			return
-		}
-	};
+	let file = File::open(filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
+
 		
 	let mut reader = BufReader::new(&file);
 	let mut module = match read_fn(&mut reader) {
 		Ok(module) => module,
 		Err(e) => {
-			println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-			return
+			return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
 		}
 	};
 		
 	let ref filename = args.arg_destination;
-	let file = match File::create(&filename) {
-		Ok(file) => file,
-		Err(e) => {
-			println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-			return
-		}
-	};
+	let file = File::create(&filename)
+		.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 	let mut writer = BufWriter::new(&file);		
 	match ptmf::write_mod(&mut writer,&mut module) {
 		Ok(_) => (),
 		Err(e) => {
-			println!("Failed to write module {}. Error: '{:?}'", filename, e);
+			return Err(anyhow!("Failed to write module : '{}' Error: '{:?}'", filename, e))
 		}
 	}
 
+	Ok(())
 }

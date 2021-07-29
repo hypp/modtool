@@ -6,6 +6,7 @@ use std::io::Read;
 use std::cmp;
 use std::str::FromStr;
 use std::collections::BTreeMap;
+use anyhow::{Context, Result, anyhow};
 // Command line
 use docopt::Docopt;
 // JSON
@@ -482,22 +483,20 @@ fn remove_unused_samples(module: &mut ptmf::PTModule) {
 	}
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
-//    println!("{:?}", args);	
 	
 	if args.flag_version {
 		println!("Version: {}", VERSION);
-		return;
+		return Ok(());
 	}
 	
 	if args.flag_number.len() > 0 {
 		let number = usize::from_str(&args.flag_number).unwrap();
 		if number < 1 || number > 31 {
-			println!("Invalid sample number '{}'", number);
-			return;
+			return Err(anyhow!("Invalid sample number '{}'", number));
 		}
 	}
 
@@ -525,20 +524,14 @@ fn main() {
 		
 	if args.cmd_show {
 		for ref filename in args.arg_file {
-			let file = match File::open(filename) {
-				Ok(file) => file,
-				Err(e) => {
-					println!("Failed to open file: '{}' Error: '{}'", filename, e);
-					continue
-				}
-			};
+			let file = File::open(filename)
+				.with_context(|| format!("Failed to open file: '{}'", filename))?;
 			
 			let mut reader = BufReader::new(&file);
 			let module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
-					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-					continue
+					return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
 				}
 			};
 			
@@ -562,20 +555,14 @@ fn main() {
 		}
 	} else if args.cmd_save {
 		let ref filename = args.arg_file[0];
-		let file = match File::open(filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{}'", filename, e);
-				return
-			}
-		};
+		let file = File::open(filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
 		
 		let mut reader = BufReader::new(&file);
 		let module = match read_fn(&mut reader) {
 			Ok(module) => module,
 			Err(e) => {
-				println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-				return
+				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
 			}
 		};
 
@@ -586,8 +573,7 @@ fn main() {
 		} else {
 			let number = usize::from_str(&args.flag_number).unwrap() - 1;
 			if number >= module.sample_info.len() {
-				println!("Invalid sample number. Only {} samples available.", module.sample_info.len());
-				return
+				return Err(anyhow!("Invalid sample number. Only {} samples available.", module.sample_info.len()))
 			}
 			number..number+1
 		};
@@ -595,20 +581,14 @@ fn main() {
 		save_samples(&module,&(range.collect()),&args.arg_fileprefix);
 	} else if args.cmd_convert {
 		for ref filename in args.arg_file {
-			let file = match File::open(filename) {
-				Ok(file) => file,
-				Err(e) => {
-					println!("Failed to open file: '{}' Error: '{}'", filename, e);
-					continue
-				}
-			};
+			let file = File::open(filename)
+				.with_context(|| format!("Failed to open file: '{}'", filename))?;
 			
 			let mut reader = BufReader::new(&file);
 			let mut module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
-					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-					continue
+					return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
 				}
 			};
 			
@@ -624,39 +604,28 @@ fn main() {
 			
 			let filename = format!("{}_{}",args.arg_fileprefix,filename);
 		
-			let file = match File::create(&filename) {
-				Ok(file) => file,
-				Err(e) => {
-					println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-					return
-				}
-			};
+			let file = File::create(&filename)
+				.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 			let mut writer = BufWriter::new(&file);		
 			match ptmf::write_mod(&mut writer,&mut module) {
 				Ok(_) => (),
 				Err(e) => {
-					println!("Failed to write module {}. Error: '{:?}'", filename, e);
+					return Err(anyhow!("Failed to write module {}. Error: '{:?}'", filename, e))
 				}
 			}
 		}
 	}  else if args.cmd_merge {
 		// Open first module
 		let ref first_filename = args.arg_file[0];
-		let file = match File::open(first_filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
-				return
-			}
-		};
+		let file = File::open(first_filename)
+			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
 		
 		let mut reader = BufReader::new(&file);
 		let mut first_module = match read_fn(&mut reader) {
 			Ok(module) => module,
 			Err(e) => {
-				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
-				return
+				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e))
 			}
 		};
 
@@ -665,20 +634,14 @@ fn main() {
 
 		for i in 1..args.arg_file.len() {
 			let ref filename = args.arg_file[i];
-			let file = match File::open(filename) {
-				Ok(file) => file,
-				Err(e) => {
-					println!("Failed to open file: '{}' Error: '{}'", filename, e);
-					continue
-				}
-			};
+			let file = File::open(filename)
+				.with_context(|| format!("Failed to open file: '{}'", filename))?;
 			
 			let mut reader = BufReader::new(&file);
 			let mut module = match read_fn(&mut reader) {
 				Ok(module) => module,
 				Err(e) => {
-					println!("Failed to parse file: '{}' Error: '{:?}'", filename, e);
-					continue
+					return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
 				}
 			};
 			
@@ -716,39 +679,28 @@ fn main() {
 		}
 
 		let ref filename = args.arg_target;
-		let file = match File::create(&filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				return
-			}
-		};
+		let file = File::create(&filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 		let mut writer = BufWriter::new(&file);		
 		match ptmf::write_mod(&mut writer,&mut first_module) {
 			Ok(_) => (),
 			Err(e) => {
-				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+				return Err(anyhow!("Failed to write module {}. Error: '{:?}'", filename, e))
 			}
 		}
 
 	}  else if args.cmd_insert {
 		// Open first module
 		let ref first_filename = args.arg_file[0];
-		let file = match File::open(first_filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
-				return
-			}
-		};
+		let file = File::open(first_filename)
+			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
 		
 		let mut reader = BufReader::new(&file);
 		let mut module = match read_fn(&mut reader) {
 			Ok(module) => module,
 			Err(e) => {
-				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
-				return
+				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e))
 			}
 		};
 
@@ -799,39 +751,28 @@ fn main() {
 		}
 
 		let ref filename = args.arg_target;
-		let file = match File::create(&filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				return
-			}
-		};
+		let file = File::create(&filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 		let mut writer = BufWriter::new(&file);		
 		match ptmf::write_mod(&mut writer,&mut module) {
 			Ok(_) => (),
 			Err(e) => {
-				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+				return Err(anyhow!("Failed to write module {}. Error: '{:?}'", filename, e))
 			}
 		}
 
 	} else if args.cmd_tojson {
 		// Open first module
 		let ref first_filename = args.arg_file[0];
-		let file = match File::open(first_filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
-				return
-			}
-		};
+		let file = File::open(first_filename)
+			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
 		
 		let mut reader = BufReader::new(&file);
 		let module = match read_fn(&mut reader) {
 			Ok(module) => module,
 			Err(e) => {
-				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
-				return
+				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e))
 			}
 		};
 
@@ -839,57 +780,38 @@ fn main() {
 		drop(file);
 
 		let ref filename = args.arg_target;
-		let file = match File::create(&filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				return
-			}
-		};
+		let file = File::create(&filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 		let writer = BufWriter::new(&file);
 		let format = PrettyFormatter2::default();
 		let mut out = serde_json::Serializer::with_formatter(writer, format);		
-		module.serialize(&mut out).unwrap();
+		module.serialize(&mut out)
+			.with_context(|| format!("Failed to serialize module to file: '{}'", filename))?;
 
 	} else if args.cmd_fromjson {
 		// Open json file
 		let ref first_filename = args.arg_file[0];
-		let file = match File::open(first_filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{}'", first_filename, e);
-				return
-			}
-		};
+		let file = File::open(first_filename)
+			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
 		
 		let reader = BufReader::new(&file);
-		let mut module: ptmf::PTModule = match serde_json::from_reader(reader) {
-			Ok(module) => module,
-			Err(e) => {
-				println!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e);
-				return
-			}
-		};
+		let mut module: ptmf::PTModule = serde_json::from_reader(reader)
+			.with_context(|| format!("Failed to parse module fromo file: '{}'", first_filename))?;
 
 		let ref filename = args.arg_target;
-		let file = match File::create(&filename) {
-			Ok(file) => file,
-			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				return
-			}
-		};
+		let file = File::create(&filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
 
 		let mut writer = BufWriter::new(&file);		
 		match ptmf::write_mod(&mut writer,&mut module) {
 			Ok(_) => (),
 			Err(e) => {
-				println!("Failed to write module {}. Error: '{:?}'", filename, e);
+				return Err(anyhow!("Failed to write module {}. Error: '{:?}'", filename, e))
 			}
 		}
 
 	}
 
-	println!("Done!");
+	Ok(())
 }
