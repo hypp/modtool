@@ -451,9 +451,10 @@ fn find_unused_samples(module: &ptmf::PTModule) -> Vec<u8> {
 
 fn remove_unused_samples(module: &mut ptmf::PTModule) {
 	let mut unused = find_unused_samples(module);
+	// MUST remove highest sample first
+	unused.sort();
 	unused.reverse();
 
-	// MUST remove highest sample first
 	for i in unused {
 		let index = i as usize - 1;
 		
