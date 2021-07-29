@@ -11,5 +11,6 @@ rustc-serialize = "*"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-[dependencies.modfile]
-git = "https://github.com/hypp/modfile"
+modfile = { path = "../modfile", version="1.4.6"}
+
+#git = "https://github.com/hypp/modfile"}
