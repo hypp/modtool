@@ -10,11 +10,10 @@ use anyhow::{Context, Result, anyhow};
 // Command line
 use docopt::Docopt;
 // JSON
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize};
 
 // ProTracker and ThePlayer
 use modfile::ptmf;
-use modtool::pretty::PrettyFormatter2;
 
 // TODO Refactor this to several files
 // TODO Move some of the functions to the modfile crate
@@ -32,8 +31,6 @@ Usage:
     modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
     modtool merge [--sync] <target> <file>...
     modtool insert <target> <file>
-    modtool tojson <target> <file>
-    modtool fromjson <target> <file>
 
 Options:
     -V, --version         Show version info.
@@ -76,14 +73,6 @@ Options:
                           unless the pattern already has at least one E8x command.
       <target>            Output file.
       <file>              File(s) to process.
-
-    tojson                Convert a module to a json representation
-      <target>            Output file.
-      <file>              File to process.
-
-    fromjson              Convert a module to a json representation
-      <target>            Output file.
-      <file>              File to process.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -762,56 +751,7 @@ fn main() -> Result<()> {
 			}
 		}
 
-	} else if args.cmd_tojson {
-		// Open first module
-		let ref first_filename = args.arg_file[0];
-		let file = File::open(first_filename)
-			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
-		
-		let mut reader = BufReader::new(&file);
-		let module = match read_fn(&mut reader) {
-			Ok(module) => module,
-			Err(e) => {
-				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", first_filename, e))
-			}
-		};
-
-		// Close file
-		drop(file);
-
-		let ref filename = args.arg_target;
-		let file = File::create(&filename)
-			.with_context(|| format!("Failed to open file: '{}'", filename))?;
-
-		let writer = BufWriter::new(&file);
-		let format = PrettyFormatter2::default();
-		let mut out = serde_json::Serializer::with_formatter(writer, format);		
-		module.serialize(&mut out)
-			.with_context(|| format!("Failed to serialize module to file: '{}'", filename))?;
-
-	} else if args.cmd_fromjson {
-		// Open json file
-		let ref first_filename = args.arg_file[0];
-		let file = File::open(first_filename)
-			.with_context(|| format!("Failed to open file: '{}'", first_filename))?;
-		
-		let reader = BufReader::new(&file);
-		let mut module: ptmf::PTModule = serde_json::from_reader(reader)
-			.with_context(|| format!("Failed to parse module fromo file: '{}'", first_filename))?;
-
-		let ref filename = args.arg_target;
-		let file = File::create(&filename)
-			.with_context(|| format!("Failed to open file: '{}'", filename))?;
-
-		let mut writer = BufWriter::new(&file);		
-		match ptmf::write_mod(&mut writer,&mut module) {
-			Ok(_) => (),
-			Err(e) => {
-				return Err(anyhow!("Failed to write module {}. Error: '{:?}'", filename, e))
-			}
-		}
-
-	}
+	} 
 
 	Ok(())
 }
