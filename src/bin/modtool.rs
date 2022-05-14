@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::BufWriter;
 use std::io::Write;
 use std::io::BufReader;
@@ -27,7 +28,7 @@ Usage:
     modtool (-h | --help)
     modtool (-V | --version)
     modtool show [--summary] [--sample-info] [--sample-stats] [--pattern-info] [--use-spn] [--in-p61] [--skip-filesize-check] <file>...
-    modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] [--use-sample-name] <fileprefix> <file>
+    modtool save (--number=<number> | --all) [--in-p61] [--skip-filesize-check] [--use-sample-name] <fileprefix> <file>...
     modtool convert [--unused-patterns] [--unused-samples] [--in-p61] [--skip-filesize-check] <fileprefix> <file>...
     modtool merge [--sync] <target> <file>...
     modtool insert <target> <file>
@@ -365,30 +366,26 @@ fn show_pattern_info(module: &ptmf::PTModule, use_spn: bool) {
 
 fn save_samples(module: &ptmf::PTModule,range: &Vec<usize>,prefix: &String, use_sample_name: &bool) {
 	for i in range {
-		let sample_name = &module.sample_info[*i].name;
+		let sample_name = sanitize_filename::sanitize(&module.sample_info[*i].name);
 		if module.sample_info[*i].length == 0 {
-			println!("Skipping empty sample {}",sample_name);
+			println!("Skipping empty sample '{}'",sample_name);
 			continue;
 		}
-		let filename;
-		let fallback_filename = format!("{}_{}.raw",prefix,i+1);
-		if *use_sample_name {
-			filename = format!("{}.raw",sanitize_filename::sanitize(sample_name));
+		let filename = if *use_sample_name {
+			format!("{}.raw",sample_name)
 		} else {
-			filename = fallback_filename.clone();
-		}
+			format!("{}_{}.raw",prefix,i+1)
+		};
+		println!("Writing sample: '{}'", filename);
 
-		let file = match File::create(&filename) {
+		let file = match OpenOptions::new()
+									.write(true)
+									.create_new(true)
+									.open(&filename) {
 			Ok(file) => file,
 			Err(e) => {
-				println!("Failed to open file: '{}' Error: '{:?}'", filename, e);
-				match File::create(&fallback_filename) {
-					Ok(file) => file,
-					Err(e) => {
-						println!("Failed to open file: '{}' Error: '{:?}'", fallback_filename, e);
-						return
-					}
-				}
+				println!("Failed to create file: '{}' Error: '{:?}'", filename, e);
+				continue;
 			}
 		};
 
@@ -558,31 +555,32 @@ fn main() -> Result<()> {
 			}
 		}
 	} else if args.cmd_save {
-		let ref filename = args.arg_file[0];
-		let file = File::open(filename)
-			.with_context(|| format!("Failed to open file: '{}'", filename))?;
-		
-		let mut reader = BufReader::new(&file);
-		let module = match read_fn(&mut reader) {
-			Ok(module) => module,
-			Err(e) => {
-				return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
-			}
-		};
+		for ref filename in args.arg_file {
+			let file = File::open(filename)
+				.with_context(|| format!("Failed to open file: '{}'", filename))?;
+			
+			let mut reader = BufReader::new(&file);
+			let module = match read_fn(&mut reader) {
+				Ok(module) => module,
+				Err(e) => {
+					return Err(anyhow!("Failed to parse file: '{}' Error: '{:?}'", filename, e))
+				}
+			};
 
-		println!("Processing: {}", filename);
-		
-		let range = if args.flag_all {
-			0..module.sample_info.len()
-		} else {
-			let number = usize::from_str(&args.flag_number).unwrap() - 1;
-			if number >= module.sample_info.len() {
-				return Err(anyhow!("Invalid sample number. Only {} samples available.", module.sample_info.len()))
-			}
-			number..number+1
-		};
-		
-		save_samples(&module,&(range.collect()),&args.arg_fileprefix, &args.flag_use_sample_name);
+			println!("Processing: {}", filename);
+			
+			let range = if args.flag_all {
+				0..module.sample_info.len()
+			} else {
+				let number = usize::from_str(&args.flag_number).unwrap() - 1;
+				if number >= module.sample_info.len() {
+					return Err(anyhow!("Invalid sample number. Only {} samples available.", module.sample_info.len()))
+				}
+				number..number+1
+			};
+			
+			save_samples(&module,&(range.collect()),&args.arg_fileprefix, &args.flag_use_sample_name);
+		}
 	} else if args.cmd_convert {
 		for ref filename in args.arg_file {
 			let file = File::open(filename)
