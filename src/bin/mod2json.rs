@@ -37,7 +37,6 @@ Options:
 struct Args {
     arg_source: String,
     arg_destination: String,
-    flag_help: bool,
 	flag_version: bool,
 	flag_in_p61: bool,
 	flag_skip_filesize_check: bool,
