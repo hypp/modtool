@@ -80,7 +80,6 @@ Options:
 #[derive(Debug, Deserialize)]
 struct Args {
     arg_file: Vec<String>,
-    flag_help: bool,
 	flag_version: bool,
 	
 	// Common for all sub commands
