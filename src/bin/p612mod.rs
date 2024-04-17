@@ -33,7 +33,6 @@ Options:
 struct Args {
     arg_source: String,
     arg_destination: String,
-    flag_help: bool,
 	flag_version: bool,
 }
 
