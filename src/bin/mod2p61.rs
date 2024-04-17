@@ -22,12 +22,13 @@ mod2p61.
 Usage: 
     mod2p61 (-h | --help)
     mod2p61 (-V | --version)
-    mod2p61 [--skip-filesize-check] <source> <destination>
+    mod2p61 [--skip-filesize-check] [--sample-file=<samplefile>] <source> <destination>
 
 Options:
     -V, --version          Show version info.
     -h, --help             Show this text.
     --skip-filesize-check  Skip check if all data has been parsed.
+    --sample-file=<samplefile>  Write sample data to separate file <samplefile>
 
     <source>               Input file.
     <destination>          Output file.
@@ -37,9 +38,9 @@ Options:
 struct Args {
     arg_source: String,
     arg_destination: String,
-    flag_help: bool,
 	flag_version: bool,
 	flag_skip_filesize_check: bool,
+	flag_sample_file: String
 }
 
 fn main() -> Result<()> {
@@ -88,15 +89,30 @@ fn main() -> Result<()> {
 	// Messy way of getting The Player use code
 	let mut p61data = Vec::new();
 	let mut p61stream = Cursor::new(&mut p61data);
-	match ptmf::write_p61(&mut p61stream, &module) {
+
+	let mut p61samples = Vec::new();
+	let mut p61samplestream = Cursor::new(&mut p61samples);
+
+	match ptmf::write_p61(&mut p61stream, Option::Some(&mut p61samplestream), &module) {
 		Ok(_) => (),
 		Err(e) => {
 			return Err(anyhow!("Failed to convert module. Error: '{:?}'",e))
 		}
 	}
 
-	p61stream.set_position(0);
-	let p61module = match ptmf::read_p61(&mut p61stream) {
+	// read_p61 must have samples and data in the same buffer
+	let mut p61alldata: Vec<u8> = Vec::new();
+	for b in &p61data
+	{
+		p61alldata.push(*b)
+	};
+	for b in &p61samples
+	{
+		p61alldata.push(*b)
+	};
+	let mut p61alldatastream = Cursor::new(&mut p61alldata);
+
+	let p61module = match ptmf::read_p61(&mut p61alldatastream) {
 		Ok(module) => module,
 		Err(e) => {
 			return Err(anyhow!("Failed to convert data. Error: '{:?}'",e))
@@ -112,6 +128,24 @@ fn main() -> Result<()> {
 	let mut writer = BufWriter::new(&file);
 	writer.write_all(&p61data)
 		.with_context(|| format!("Failed to write module {}", filename))?;
+
+	if args.flag_sample_file.len() <= 0 
+	{
+		// One file for all data
+		writer.write_all(&p61samples)
+		.with_context(|| format!("Failed to write module {}", filename))?;
+	}
+	else
+	{
+		// Separate file for samples
+		let ref filename = args.flag_sample_file;
+		let file = File::create(&filename)
+			.with_context(|| format!("Failed to open file: '{}'", filename))?;
+
+		let mut writer = BufWriter::new(&file);
+		writer.write_all(&p61samples)
+		.with_context(|| format!("Failed to write samples {}", filename))?;
+	} 
 
 	println!("Usecode: ${:08x}",usecode);
 	Ok(())
