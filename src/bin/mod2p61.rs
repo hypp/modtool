@@ -9,7 +9,7 @@ use std::io::Cursor;
 // Command line
 use docopt::Docopt;
 // JSON
-use serde::{Deserialize};
+use serde::Deserialize;
 
 // ProTracker and ThePlayer
 use modfile::ptmf;
